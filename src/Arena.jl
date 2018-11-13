@@ -1,17 +1,20 @@
-module Arena
+module TypedArena
 using Base.Checked
 
-# An immutable reference cell. Attempting to create a null
-# reference will result in an ErrorException.
+# An immutable reference cell. Attempting to deference a null
+# reference will return `nothing`.
 struct RefCell{T}
     ptr::Ptr{T}
-    RefCell{T}(ptr::Ptr{T}) where {T} = ptr == C_NULL ?
-        throw(ErrorException("Cannot create a null reference.")) :
-        new{T}(ptr)
-end 
+end
+
+RefCell{T}(::Nothing) where {T} = RefCell{T}(C_NULL)
 
 function Base.getindex(rc::RefCell)
-    unsafe_load(rc.ptr)
+    if rc.ptr == C_NULL
+        nothing
+    else
+        unsafe_load(rc.ptr)
+    end
 end
 
 function Base.setindex(rc::RefCell{T}, value::T) where {T}
@@ -73,7 +76,7 @@ function alloc(arena::TypedArena{T}, object::T) where {T}
         grow(arena)
     end
 
-    objptr = convert(Ptr{T}, arena.ptr)
+    objptr = arena.ptr
     unsafe_store!(objptr, object)
     arena.ptr += sizeof(T)
     RefCell{T}(objptr)
@@ -91,12 +94,4 @@ end
 function destroy(arena::TypedArena)
     destroy(arena.first)
 end
-
-# Usage
-
-struct EmptyTree end
-
-struct TreeNode
-    left::Union{EmptyTree, RefCell{TreeNode}}
-    right::Union{EmptyTree, RefCell{TreeNode}}
-end
+end # end Module TypedArena
