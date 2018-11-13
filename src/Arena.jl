@@ -18,7 +18,7 @@ function Base.setindex(rc::RefCell{T}, value::T) where {T}
     unsafe_store!(rc.ptr, value)
 end
 
-mutable struct TypedArenaChunk{T}
+struct TypedArenaChunk{T}
     next::Union{Nothing, TypedArenaChunk{T}}
     capacity::UInt64
     objects::Ptr{T}
@@ -80,12 +80,12 @@ function alloc(arena::TypedArena{T}, object::T) where {T}
 end
 
 function grow(arena::TypedArena{T}) where {T}
-    chunk = arena.first
-    capacity = checked_mul(chunk.capacity, UInt64(2))
-    chunk = TypedArenaChunk{T}(chunk, capacity)
-    arena.ptr = start(chunk)
-    arena.end_ptr = end_ptr(chunk)
-    arena.first = chunk
+    old_chunk = arena.first
+    capacity = checked_mul(old_chunk.capacity, UInt64(2))
+    new_chunk = TypedArenaChunk{T}(old_chunk, capacity)
+    arena.ptr = start(new_chunk)
+    arena.end_ptr = end_ptr(new_chunk)
+    arena.first = new_chunk
 end
 
 function destroy(arena::TypedArena)
