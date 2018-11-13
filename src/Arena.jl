@@ -1,6 +1,8 @@
 module Arena
 using Base.Checked
 
+# An immutable reference cell. Attempting to create a null
+# reference will result in an ErrorException.
 struct RefCell{T}
     ptr::Ptr{T}
     RefCell{T}(ptr::Ptr{T}) where {T} = ptr == C_NULL ?
@@ -39,6 +41,13 @@ function end_ptr(chunk::TypedArenaChunk{T}) where {T}
     chunk.objects + size
 end
 
+function destroy(chunk::TypedArenaChunk)
+    Libc.free(chunk.objects)
+    if !(chunk.next === nothing)
+        destroy(chunk.next)
+    end
+end
+
 # A memory arena that can only hold one type of object
 mutable struct TypedArena{T}
     # Pointer to the next object
@@ -60,8 +69,8 @@ function TypedArena{T}(capacity::UInt64) where {T}
 end
 
 function alloc(arena::TypedArena{T}, object::T) where {T}
-    if arena.ptr == arena.end_ptr && sizeof(T) != 0
-        throw(OutOfMemoryError())
+    if arena.ptr == arena.end_ptr
+        grow(arena)
     end
 
     objptr = convert(Ptr{T}, arena.ptr)
@@ -69,15 +78,25 @@ function alloc(arena::TypedArena{T}, object::T) where {T}
     arena.ptr += sizeof(T)
     RefCell{T}(objptr)
 end
+
+function grow(arena::TypedArena{T}) where {T}
+    chunk = arena.first
+    capacity = checked_mul(chunk.capacity, UInt64(2))
+    chunk = TypedArenaChunk{T}(chunk, capacity)
+    arena.ptr = start(chunk)
+    arena.end_ptr = end_ptr(chunk)
+    arena.first = chunk
+end
+
+function destroy(arena::TypedArena)
+    destroy(arena.first)
 end
 
 # Usage
 
-abstract type AbstractTree end
-
 struct EmptyTree end
 
 struct TreeNode
-    left::Union{RefCell{EmptyTree}, RefCell{TreeNode}}
-    right::Union{RefCell{EmptyTree}, RefCell{TreeNode}}
+    left::Union{EmptyTree, RefCell{TreeNode}}
+    right::Union{EmptyTree, RefCell{TreeNode}}
 end
