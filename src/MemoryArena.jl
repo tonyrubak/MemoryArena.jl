@@ -1,6 +1,9 @@
 module MemoryArena
 using Base.Checked
 
+export TypedArena, RefCell
+export alloc, destroy
+
 # An immutable reference cell. Attempting to deference a null
 # reference will return `nothing`.
 struct RefCell{T}
