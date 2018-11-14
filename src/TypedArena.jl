@@ -30,8 +30,11 @@ struct TypedArenaChunk{T}
                              capacity::UInt64) where {T}
         size = checked_mul(sizeof(T) * capacity)
         chunk_ptr = Libc.malloc(size)
-        objects = convert(Ptr{T}, chunk_ptr)
-        new{T}(next, capacity, objects)
+        if chunk_ptr == C_NULL
+            nothing
+        else
+            objects = convert(Ptr{T}, chunk_ptr)
+            new{T}(next, capacity, objects)
     end
 end
 
