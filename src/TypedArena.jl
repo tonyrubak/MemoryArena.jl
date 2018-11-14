@@ -1,4 +1,4 @@
-module TypedArena
+module MemoryArena
 using Base.Checked
 
 # An immutable reference cell. Attempting to deference a null
@@ -17,10 +17,6 @@ function Base.getindex(rc::RefCell)
     end
 end
 
-function Base.setindex(rc::RefCell{T}, value::T) where {T}
-    unsafe_store!(rc.ptr, value)
-end
-
 struct TypedArenaChunk{T}
     next::Union{Nothing, TypedArenaChunk{T}}
     capacity::UInt64
@@ -35,6 +31,7 @@ struct TypedArenaChunk{T}
         else
             objects = convert(Ptr{T}, chunk_ptr)
             new{T}(next, capacity, objects)
+        end
     end
 end
 
