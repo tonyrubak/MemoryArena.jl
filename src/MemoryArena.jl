@@ -70,11 +70,14 @@ end
 TypedArena{T}() where {T} = TypedArena{T}(UInt64(8))
 
 function TypedArena{T}(capacity::UInt64) where {T}
+    if T isa Union
+        throw(ErrorException("Union types are not supported."))
+    end
     chunk = TypedArenaChunk{T}(nothing, capacity)
     TypedArena{T}(start(chunk), end_ptr(chunk), chunk)
 end
 
-function alloc(arena::TypedArena{T}, object::T) where {T}
+function alloc(arena::TypedArena{T}, object::U) where T == U
     if arena.ptr == arena.end_ptr
         grow(arena)
     end
