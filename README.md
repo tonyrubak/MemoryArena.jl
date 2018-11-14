@@ -11,7 +11,7 @@ manually destroyed.
 1. At this point, the `TypedArena` does not support `Union` types or abstract
 types. This is a planned feature.
 
-2. Yyou should not store objects in the arena which contain
+2. You should not store objects in the arena which contain
 references to objects managed by the Julia garbage collector. Doing so
 will almost surely result in corrupt memory and a crashing program.
 
