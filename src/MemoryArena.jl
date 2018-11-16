@@ -27,14 +27,15 @@ end
 
 function create_chunk(next::Ptr{TypedArenaChunk{T}},
                       capacity::UInt64) where T
-    size = checked_mul(sizeof(T) * capacity)
+    elem_size = checked_mul(sizeof(T) * capacity)
+    size = checked_add(elem_size, sizeof(TypedArenaChunk{T}))
     chunk_ptr = convert(Ptr{TypedArenaChunk{T}}, Libc.malloc(size))
     if chunk_ptr == C_NULL
         nothing
     else
         unsafe_store!(chunk_ptr, TypedArenaChunk{T}(next, capacity))
+        chunk_ptr
     end
-    chunk_ptr
 end
 
 function start(chunk_ptr::Ptr{TypedArenaChunk{T}}) where T
@@ -75,6 +76,9 @@ function TypedArena{T}(capacity::UInt64) where T
         throw(ErrorException("Union types are not supported."))
     end
     chunk_ptr = create_chunk(convert(Ptr{TypedArenaChunk{T}}, C_NULL), capacity)
+    if chunk_ptr === nothing
+        throw(OutOfMemoryError())
+    end
     TypedArena{T}(start(chunk_ptr), end_ptr(chunk_ptr),
                   chunk_ptr)
 end
@@ -94,6 +98,9 @@ function grow(arena::TypedArena{T}) where {T}
     old_chunk = unsafe_load(arena.first)
     capacity = checked_mul(old_chunk.capacity, UInt64(2))
     new_chunk = create_chunk(arena.first, capacity)
+    if new_chunk === nothing
+        throw(OutOfMemoryError())
+    end
     
     arena.ptr = start(new_chunk)
     arena.end_ptr = end_ptr(new_chunk)
