@@ -21,36 +21,37 @@ function Base.getindex(rc::RefCell)
 end
 
 struct TypedArenaChunk{T}
-    next::Union{Nothing, TypedArenaChunk{T}}
+    next::Ptr{TypedArenaChunk{T}}
     capacity::UInt64
-    objects::Ptr{T}
+end
 
-    function TypedArenaChunk{T}(next::Union{Nothing, TypedArenaChunk{T}},
-                             capacity::UInt64) where {T}
-        size = checked_mul(sizeof(T) * capacity)
-        chunk_ptr = Libc.malloc(size)
-        if chunk_ptr == C_NULL
-            nothing
-        else
-            objects = convert(Ptr{T}, chunk_ptr)
-            new{T}(next, capacity, objects)
-        end
+function create_chunk(next::Ptr{TypedArenaChunk{T}},
+                      capacity::UInt64) where T
+    size = checked_mul(sizeof(T) * capacity)
+    chunk_ptr = convert(Ptr{TypedArenaChunk{T}}, Libc.malloc(size))
+    if chunk_ptr == C_NULL
+        nothing
+    else
+        unsafe_store!(chunk_ptr, TypedArenaChunk{T}(next, capacity))
     end
+    chunk_ptr
 end
 
-function start(chunk::TypedArenaChunk)
-    chunk.objects
+function start(chunk_ptr::Ptr{TypedArenaChunk{T}}) where T
+    chunk_ptr + sizeof(TypedArenaChunk{T})
 end
 
-function end_ptr(chunk::TypedArenaChunk{T}) where {T}
-    size = checked_mul(chunk.capacity, sizeof(T))
-    chunk.objects + size
+function end_ptr(chunk_ptr::Ptr{TypedArenaChunk{T}}) where T
+    chunk = unsafe_load(chunk_ptr)
+    elem_size = checked_mul(chunk.capacity, sizeof(T))
+    chunk_ptr + elem_size
 end
 
-function destroy(chunk::TypedArenaChunk)
-    Libc.free(chunk.objects)
-    if !(chunk.next === nothing)
-        destroy(chunk.next)
+function destroy(chunk::Ptr{TypedArenaChunk{T}}) where T
+    next = unsafe_load(chunk).next
+    Libc.free(chunk)
+    if !(next == C_NULL)
+        destroy(next)
     end
 end
 
@@ -64,7 +65,7 @@ mutable struct TypedArena{T}
     end_ptr::Ptr{T}
     # Reference to the first memory chunk
     # allocated to the arena
-    first::TypedArenaChunk{T}
+    first::Ptr{TypedArenaChunk{T}}
 end
 
 TypedArena{T}() where {T} = TypedArena{T}(UInt64(8))
@@ -73,8 +74,9 @@ function TypedArena{T}(capacity::UInt64) where T
     if T isa Union
         throw(ErrorException("Union types are not supported."))
     end
-    chunk = TypedArenaChunk{T}(nothing, capacity)
-    TypedArena{T}(start(chunk), end_ptr(chunk), chunk)
+    chunk_ptr = create_chunk(convert(Ptr{TypedArenaChunk{T}}, C_NULL), capacity)
+    TypedArena{T}(start(chunk_ptr), end_ptr(chunk_ptr),
+                  chunk_ptr)
 end
 
 function alloc(arena::TypedArena{T}, object::T) where T
@@ -89,9 +91,10 @@ function alloc(arena::TypedArena{T}, object::T) where T
 end
 
 function grow(arena::TypedArena{T}) where {T}
-    old_chunk = arena.first
+    old_chunk = unsafe_load(arena.first)
     capacity = checked_mul(old_chunk.capacity, UInt64(2))
-    new_chunk = TypedArenaChunk{T}(old_chunk, capacity)
+    new_chunk = create_chunk(arena.first, capacity)
+    
     arena.ptr = start(new_chunk)
     arena.end_ptr = end_ptr(new_chunk)
     arena.first = new_chunk
